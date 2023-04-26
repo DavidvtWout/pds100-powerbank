@@ -23,13 +23,12 @@ screw_holes = [[6.5,-29],[6.5,29],[52.5,-29],[52.5,29]];
 $fn=24;  // Give a nice rounding to most parts. Is overriden by some modules.
 
 
-pds100Cage();
-*backPlate();
+*pds100Case();
+backPlate();
+*ParksideAdapter(inserts=true);
 
-*ParksideAdapter();
 
-
-module pds100Cage() {
+module pds100Case() {
     height = usb_wall_thickness + pcb_length + pcb_wire_space;
     width = pcb_width + 2*wall_thickness;
     depth = pcb_bottom_space + pcb_thickness + pcb_top_space + wall_thickness;
@@ -221,47 +220,124 @@ module batteryPlate(thickness=4) {
     };
 };
 
-// The pins are exacty at x=0
-module ParksideAdapter() {
-    length = pins_left_offset + pins_right_offset;
-    width = slider_top_width + 2 * ps_wall_thickness;
-    height = slider_height;
+module ParksideAdapter(inserts=false) {
+    pins_left_offset = 32.5;
+    pins_right_offset = 24.5;
+
+    slider_top_width = 46.6;    // Actually 46.35 mm
+    slider_bottom_width = 38.8; // Actually 38.1 mm
     
-    module m3_hole(insert=true) {
-        $fn=24;
-        if (insert) {
-            cylinder(h=4.2, d=4.6);
-        }
+    length = 57.0;  // This leaves 10.0 mm space for the pin slots.
+    battery_slider_length = 47;
+    width = 66.6;   // This leaves 10.0 mm at both sides around the battery.
+    height = 10.2;  // Actually 10.0 mm but add a little.
+    
+    pins_depth = 14.5;  // x position of the pins relative to the start of the slider.
+    
+    
+    module batterySlider() {
+        // This module puts the start of the slider at x=0.
+        
+        slider_width = 46.6;    // Actually 46.35 mm
+
+        pins_width = 30.7;      // Actually 30.95 mm
+        
+        module sliderCutout() {
+            slider_cutout_width = 3.9;
+            slider_cutout_height = 5.2;
+
+            translate([0,slider_width/2-slider_cutout_width,0])
+            difference() {
+                cube([battery_slider_length,slider_cutout_width,slider_cutout_height]);
+                
+                // Vertical narrowing
+                t1 = 0.8;
+                translate([battery_slider_length,0,0]) linear_extrude(slider_cutout_height)
+                polygon([[0,0],[-12,0],[-3,t1],[0,t1]]);
+                
+                // Horizontal narrowing
+                t2 = 1.0;
+                translate([battery_slider_length,0,slider_cutout_height]) rotate([-90,0,0])
+                linear_extrude(slider_cutout_width) polygon([[0,0],[-6,0],[-2,t2],[0,t2]]);
+                
+                translate([battery_slider_length,t1,0]) rotate([0,0,90])
+                rounder(slider_cutout_height, radius=1.5);
+            };
+        };
+        
+        difference() {
+            // Base shape
+            translate([0,-slider_width/2,0]) cube([battery_slider_length,slider_width,height]);
+            
+            // Pins cutout
+            r = 1.5;
+            translate([-r,-pins_width/2,0]) rounded_cube([pins_depth+r,pins_width,height], radius=r);
+            
+            // Slider cutouts
+            sliderCutout();
+            mirror([0,1,0]) sliderCutout();
+        };
+    };
+    
+    module m3Insert() {
+        cylinder(h=4.2, d=4.6);
         cylinder(h=height, d=3.2);
+    };
+    
+    module m3Screw() {
+        translate([0,0,1]) cylinder(h=height-4, d=2.5);
+        translate([0,0,height-3]) cylinder(h=3, d1=2.5, d2=3.2);
     };
     
     difference() {
         // The base shape
         // TODO: add curve at right edge
-        translate([length/2-pins_left_offset,0,0]) rounded_cube(length, width, height);
+        translate([0,-width/2,0]) rounded_cube([length, width, height]);
         
         // Slider
-        battery_slider();
-        translate([0,-pins_width/2,0]) rounder(height);
-        translate([0,pins_width/2,0]) rotate([0,0,-90]) rounder(height);
+        translate([length-battery_slider_length,0,0]) batterySlider();
         
         // Pins
-        translate([0,12.4,0]) pin();
-        translate([0,-12.4,0]) mirror([0,1,0]) pin();
+        pin_wall_thickness = 1.2;
+        x_pins = length - battery_slider_length + pins_depth;
+        y_pins = 12.1;
+        z_pins = 1.0;
+        translate([x_pins-pin_wall_thickness,y_pins,z_pins]) flatPin(height=height);
+        translate([x_pins-pin_wall_thickness,-y_pins,z_pins]) mirror([0,1,0]) flatPin(height=height);
         
         // Wire cavity
-        translate([10,-12,floor_height]) cube([10,24,height]);
+        translate([5,-12,z_pins]) cube([10,24,height]);
         
         // Screw holes
         for (pos = screw_holes) {
             x = pos[0]; y = pos[1];
-            translate([x,y,0]) m3_hole();
+            translate([x,y,0])
+            if (inserts) {
+                m3Insert();
+            } else {
+                m3Screw();
+            };
         };
         
         // Some nice rounded corners
         $fn=48;
-        translate([pins_right_offset,width/2,0]) rotate([0,0,180]) rounder(height, radius=5);
-        translate([pins_right_offset,-width/2,0]) rotate([0,0,90]) rounder(height, radius=5);
+        translate([0,width/2,0]) rotate([0,0,-90]) rounder(height, radius=5);
+        translate([0,-width/2,0]) rounder(height, radius=5);
+    };
+};
+
+module flatPin(height) {
+    slot_elevation = 1;
+    slot_width = 1.0;
+    
+    union() {
+        // Cavity
+        translate([-11.5,-2.8,0])
+        cube([11.5,3.8,height]);
+        
+        // Pin slot
+        translate([0,-slot_width/2,slot_elevation])
+        cube([10,slot_width,height-slot_elevation]);
     };
 };
 
